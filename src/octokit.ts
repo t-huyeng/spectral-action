@@ -55,7 +55,7 @@ export const createGithubCheck = (octokit: GitHub, event: RepositoryInfo, name: 
       octokit.checks.create({
         owner: event.owner,
         repo: event.repo,
-        name,
+        name: name,
         head_sha: event.sha,
         status: 'in_progress',
       }),
