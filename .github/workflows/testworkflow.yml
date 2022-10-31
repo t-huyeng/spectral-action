@@ -4,7 +4,7 @@ on:
 name: Test
 jobs:
   test:
-    name: Spectral checks
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
