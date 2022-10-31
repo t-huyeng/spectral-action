@@ -8,13 +8,10 @@ import { runSpectral, createSpectral, FileWithContent } from './spectral';
 import pluralize from 'pluralize';
 import {
   Annotations,
-  createGithubCheck,
-  createOctokitInstance,
   getRepositoryInfoFromEvent,
-  updateGithubCheck,
 } from './octokit';
 import glob from 'fast-glob';
-import { error, info, setFailed } from '@actions/core';
+import { error, info } from '@actions/core';
 import * as IOEither from 'fp-ts/IOEither';
 import * as IO from 'fp-ts/IO';
 import * as TE from 'fp-ts/TaskEither';
@@ -26,7 +23,7 @@ import { identity } from 'lodash';
 import * as path from 'path';
 const { Octokit } = require("@octokit/rest");
 
-const CHECK_NAME = 'Lint';
+// const CHECK_NAME = 'Lint';
 const traverseTask = array.traverse(T.task);
 const octokit = new Octokit();
 
@@ -137,9 +134,9 @@ const program = pipe(
   ),
   // TE.bind('octokit', ({ config }) => TE.fromEither(createOctokitInstance(config.INPUT_REPO_TOKEN))),
   TE.bind('fileContents', ({ config }) => readFilesToAnalyze(config.INPUT_FILE_GLOB, config.GITHUB_WORKSPACE)),
-  // TE.bind('annotations', ({ fileContents, config }) =>
-  //   createSpectralAnnotations(config.INPUT_SPECTRAL_RULESET, fileContents, config.GITHUB_WORKSPACE)
-  // ),
+  TE.bind('annotations', ({ fileContents, config }) =>
+    createSpectralAnnotations(config.INPUT_SPECTRAL_RULESET, fileContents, config.GITHUB_WORKSPACE)
+  ),
   // TE.bind('check', ({ octokit, repositoryInfo }) =>
   //   createGithubCheck(octokit, repositoryInfo, `${CHECK_NAME} (${repositoryInfo.eventName})`)
   // ),
