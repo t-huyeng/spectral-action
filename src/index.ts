@@ -24,9 +24,12 @@ import * as D from 'io-ts/Decoder';
 import { pipe } from 'fp-ts/pipeable';
 import { identity } from 'lodash';
 import * as path from 'path';
+const { Octokit } = require("@octokit/rest");
 
 const CHECK_NAME = 'Lint';
 const traverseTask = array.traverse(T.task);
+const octokit = new Octokit();
+
 
 const createSpectralAnnotations = (ruleset: string, parsed: FileWithContent[], basePath: string) =>
   pipe(
@@ -58,8 +61,8 @@ const createSpectralAnnotations = (ruleset: string, parsed: FileWithContent[], b
               vl.severity === DiagnosticSeverity.Error
                 ? 'failure'
                 : vl.severity === DiagnosticSeverity.Warning
-                ? 'warning'
-                : 'notice';
+                  ? 'warning'
+                  : 'notice';
 
             const sameLine = vl.range.start.line === vl.range.end.line;
 
@@ -132,38 +135,64 @@ const program = pipe(
   TE.bind('repositoryInfo', ({ config }) =>
     TE.fromEither(getRepositoryInfoFromEvent(config.GITHUB_EVENT_PATH, config.INPUT_EVENT_NAME))
   ),
-  TE.bind('octokit', ({ config }) => TE.fromEither(createOctokitInstance(config.INPUT_REPO_TOKEN))),
+  // TE.bind('octokit', ({ config }) => TE.fromEither(createOctokitInstance(config.INPUT_REPO_TOKEN))),
   TE.bind('fileContents', ({ config }) => readFilesToAnalyze(config.INPUT_FILE_GLOB, config.GITHUB_WORKSPACE)),
-  TE.bind('annotations', ({ fileContents, config }) =>
-    createSpectralAnnotations(config.INPUT_SPECTRAL_RULESET, fileContents, config.GITHUB_WORKSPACE)
+  // TE.bind('annotations', ({ fileContents, config }) =>
+  //   createSpectralAnnotations(config.INPUT_SPECTRAL_RULESET, fileContents, config.GITHUB_WORKSPACE)
+  // ),
+  // TE.bind('check', ({ octokit, repositoryInfo }) =>
+  //   createGithubCheck(octokit, repositoryInfo, `${CHECK_NAME} (${repositoryInfo.eventName})`)
+  // ),
+  TE.bind('createCheck', ({ repositoryInfo }) =>
+    octokit.checks.create({
+      owner: repositoryInfo.owner,
+      repo: repositoryInfo.repo,
+      name: "Linter",
+      head_sha: repositoryInfo.sha,
+      status: 'in_progress',
+    })
   ),
-  TE.bind('check', ({ octokit, repositoryInfo }) =>
-    createGithubCheck(octokit, repositoryInfo, `${CHECK_NAME} (${repositoryInfo.eventName})`)
+  TE.bind('updateCheck', ({ repositoryInfo }) =>
+    octokit.checks.update({
+      // check_run_id: check.id,
+      owner: repositoryInfo.owner,
+      name: "Linter",
+      repo: repositoryInfo.repo,
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      output: {
+        title: "Linter",
+        summary: 'success'
+          ? 'Lint completed successfully'
+          : 'Lint completed with some errors',
+      },
+    }),
   ),
-  TE.bind('checkResponse', ({ octokit, check, repositoryInfo, annotations }) =>
-    updateGithubCheck(
-      octokit,
-      check.data,
-      repositoryInfo,
-      annotations,
-      annotations.findIndex(f => f.annotation_level === 'failure') === -1 ? 'success' : 'failure'
-    )
-  ),
-  TE.map(({ checkResponse, repositoryInfo, annotations }) => {
-    checkResponse.map(res => {
-      info(`Check run '${res.data.name}' concluded with '${res.data.conclusion}' (${res.data.html_url})`);
-      info(
-        `Commit ${repositoryInfo.sha} has been annotated (https://github.com/${repositoryInfo.owner}/${repositoryInfo.repo}/commit/${repositoryInfo.sha})`
-      );
-    });
 
-    const fatalErrors = annotations.filter(a => a.annotation_level === 'failure');
-    if (fatalErrors.length > 0) {
-      setFailed(`${pluralize('fatal issue', fatalErrors.length)} detected. Failing the process.`);
-    }
+  // TE.bind('checkResponse', ({ octokit, check, repositoryInfo, annotations }) =>
+  //   updateGithubCheck(
+  //     octokit,
+  //     check.data,
+  //     repositoryInfo,
+  //     annotations,
+  //     annotations.findIndex(f => f.annotation_level === 'failure') === -1 ? 'success' : 'failure'
+  //   )
+  // ),
+  // TE.map(({ checkResponse, repositoryInfo, annotations }) => {
+  //   checkResponse.map(res => {
+  //     info(`Check run '${res.data.name}' concluded with '${res.data.conclusion}' (${res.data.html_url})`);
+  //     info(
+  //       `Commit ${repositoryInfo.sha} has been annotated (https://github.com/${repositoryInfo.owner}/${repositoryInfo.repo}/commit/${repositoryInfo.sha})`
+  //     );
+  //   });
 
-    return checkResponse;
-  })
+  //   const fatalErrors = annotations.filter(a => a.annotation_level === 'failure');
+  //   if (fatalErrors.length > 0) {
+  //     setFailed(`${pluralize('fatal issue', fatalErrors.length)} detected. Failing the process.`);
+  //   }
+
+  //   return checkResponse;
+  // })
 );
 
 program().then(result =>
